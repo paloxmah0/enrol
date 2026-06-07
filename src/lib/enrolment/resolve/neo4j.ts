@@ -1,6 +1,119 @@
 import { initDriver } from '@/lib/db/neo4j';
-import { entryMeetsVoiceGate, handlerForTopic } from './registry';
-import type { EntryTelegramRef, ResolveContext } from './types';
+import neo4j from 'neo4j-driver';
+import { ENROLMENT_TOPIC, entryMeetsVoiceGate, handlerForTopic } from './registry';
+import type { EntryTelegramRef, ResolveContext, ResolveStatus, ResolveStatusCounts } from './types';
+
+// Must stay aligned with entryMeetsVoiceGate() in registry.ts.
+// Unset covers legacy entries; failed is retried on backlog re-runs.
+export const ELIGIBLE_RESOLVE_STATUS_WHERE =
+  '(e.resolveStatus IS NULL OR e.resolveStatus = \'pending\' OR e.resolveStatus = \'failed\')';
+
+const PENDING_PICK_MATCH = `
+  MATCH (e:Entry)-[:FROM_CHAT]->(c:TelegramChat)
+  WHERE ${ELIGIBLE_RESOLVE_STATUS_WHERE} AND c.topic = $topic
+  OPTIONAL MATCH (e)-[:HAS_VOICE]->(v:Voice)
+  WITH e, v
+  WHERE v IS NULL OR v.transcription IS NOT NULL
+`;
+
+export async function pickEntriesPendingResolve(limit: number): Promise<string[]> {
+  const driver = await initDriver();
+  const session = driver.session({ database: 'neo4j' });
+
+  try {
+    const result = await session.run(
+      `
+      ${PENDING_PICK_MATCH}
+      WITH DISTINCT e
+      ORDER BY e.date
+      RETURN e.id AS entryId
+      LIMIT $limit
+      `,
+      { topic: ENROLMENT_TOPIC, limit: neo4j.int(limit) }
+    );
+    return result.records.map((r) => r.get('entryId') as string);
+  } finally {
+    await session.close();
+  }
+}
+
+export async function countEntriesPendingResolve(): Promise<number> {
+  const driver = await initDriver();
+  const session = driver.session({ database: 'neo4j' });
+
+  try {
+    const result = await session.run(
+      `
+      ${PENDING_PICK_MATCH}
+      RETURN count(DISTINCT e) AS count
+      `,
+      { topic: ENROLMENT_TOPIC }
+    );
+    return result.records[0].get('count').toNumber();
+  } finally {
+    await session.close();
+  }
+}
+
+export async function countResolveStatusByStatus(): Promise<ResolveStatusCounts> {
+  const driver = await initDriver();
+  const session = driver.session({ database: 'neo4j' });
+
+  try {
+    const result = await session.run(
+      `
+      MATCH (e:Entry)-[:FROM_CHAT]->(c:TelegramChat)
+      WHERE c.topic = $topic
+      RETURN e.resolveStatus AS status, count(DISTINCT e) AS count
+      `,
+      { topic: ENROLMENT_TOPIC }
+    );
+
+    const counts: ResolveStatusCounts = {
+      unset: 0,
+      pending: 0,
+      attempted: 0,
+      successful: 0,
+      failed: 0,
+    };
+
+    for (const record of result.records) {
+      const status = record.get('status') as ResolveStatus | null;
+      const count = record.get('count').toNumber();
+      if (status == null) {
+        counts.unset += count;
+      } else if (status in counts) {
+        counts[status] += count;
+      }
+    }
+
+    return counts;
+  } finally {
+    await session.close();
+  }
+}
+
+export async function markEntryResolveAttempted(entryId: string): Promise<boolean> {
+  const driver = await initDriver();
+  const session = driver.session({ database: 'neo4j' });
+
+  try {
+    const result = await session.run(
+      `
+      MATCH (e:Entry { id: $entryId })
+      WHERE e.resolveStatus IS NULL OR e.resolveStatus = 'pending' OR e.resolveStatus = 'failed'
+      SET e.resolveStatus = 'attempted',
+          e.resolveAttemptedAt = datetime(),
+          e.resolveFailureReason = null
+      RETURN e.id AS entryId
+      `,
+      { entryId }
+    );
+    return result.records.length > 0;
+  } finally {
+    await session.close();
+  }
+}
 
 export async function markEntryResolveSuccessful(entryId: string): Promise<void> {
   const driver = await initDriver();

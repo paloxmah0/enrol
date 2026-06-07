@@ -35,3 +35,20 @@ export interface EntryTelegramRef {
   messageId: number;
   chatId: number;
 }
+
+export interface ResolveStatusCounts {
+  unset: number;
+  pending: number;
+  attempted: number;
+  successful: number;
+  failed: number;
+}
+
+export interface BacklogResolveResult {
+  status: 'success' | 'idle';
+  entryId?: string;
+  result?: EntryResolveResult;
+  outstanding: number;
+  hasMore: boolean;
+  counts: ResolveStatusCounts;
+}

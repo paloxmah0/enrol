@@ -1,7 +1,12 @@
 import { POST } from '@/app/api/webhook/resolve/route';
+import { runBacklogResolveTick } from '@/lib/enrolment/resolve/backlog';
 import { runEntryResolve } from '@/lib/enrolment/resolve/entry';
 import { removeFromOrganisingQueue } from '@/lib/enrolment/resolve/queue';
 import { NextRequest } from 'next/server';
+
+jest.mock('@/lib/enrolment/resolve/backlog', () => ({
+  runBacklogResolveTick: jest.fn(),
+}));
 
 jest.mock('@/lib/enrolment/resolve/entry', () => ({
   runEntryResolve: jest.fn(),
@@ -11,9 +16,13 @@ jest.mock('@/lib/enrolment/resolve/queue', () => ({
   removeFromOrganisingQueue: jest.fn(),
 }));
 
+const mockedRunBacklogResolveTick =
+  runBacklogResolveTick as jest.MockedFunction<typeof runBacklogResolveTick>;
 const mockedRunEntryResolve = runEntryResolve as jest.MockedFunction<typeof runEntryResolve>;
 const mockedRemoveFromOrganisingQueue =
   removeFromOrganisingQueue as jest.MockedFunction<typeof removeFromOrganisingQueue>;
+
+const emptyCounts = { unset: 0, pending: 0, attempted: 0, successful: 0, failed: 0 };
 
 function buildRequest(entryId: string, token = 'test-token') {
   return new NextRequest(
@@ -27,11 +36,21 @@ function buildRequest(entryId: string, token = 'test-token') {
   );
 }
 
+function buildBacklogRequest(token = 'test-token') {
+  return new NextRequest('http://localhost:3000/api/webhook/resolve?backlog=true', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
 describe('API /api/webhook/resolve', () => {
   const originalToken = process.env.PRIVATE_API_TOKEN;
 
   beforeEach(() => {
     process.env.PRIVATE_API_TOKEN = 'test-token';
+    mockedRunBacklogResolveTick.mockReset();
     mockedRunEntryResolve.mockReset();
     mockedRemoveFromOrganisingQueue.mockReset();
     mockedRemoveFromOrganisingQueue.mockResolvedValue(true);
@@ -70,5 +89,43 @@ describe('API /api/webhook/resolve', () => {
 
     const json = await res.json();
     expect(json.result.resolveStatus).toBe('successful');
+  });
+
+  it('processes one backlog entry when backlog=true', async () => {
+    mockedRunBacklogResolveTick.mockResolvedValue({
+      status: 'success',
+      entryId: 'e2',
+      result: { entryId: 'e2', handler: 'enrolment', resolveStatus: 'successful' },
+      outstanding: 1,
+      hasMore: true,
+      counts: { ...emptyCounts, successful: 1, pending: 1 },
+    });
+
+    const res = await POST(buildBacklogRequest());
+    expect(res.status).toBe(200);
+    expect(mockedRunBacklogResolveTick).toHaveBeenCalled();
+    expect(mockedRunEntryResolve).not.toHaveBeenCalled();
+
+    const json = await res.json();
+    expect(json.backlog).toBe(true);
+    expect(json.entryId).toBe('e2');
+    expect(json.hasMore).toBe(true);
+    expect(json.outstanding).toBe(1);
+  });
+
+  it('returns idle backlog response when nothing is pending', async () => {
+    mockedRunBacklogResolveTick.mockResolvedValue({
+      status: 'idle',
+      outstanding: 0,
+      hasMore: false,
+      counts: emptyCounts,
+    });
+
+    const res = await POST(buildBacklogRequest());
+    expect(res.status).toBe(200);
+
+    const json = await res.json();
+    expect(json.status).toBe('idle');
+    expect(json.hasMore).toBe(false);
   });
 });
