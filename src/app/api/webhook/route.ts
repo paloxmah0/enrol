@@ -45,7 +45,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ status: 'ok', route, reply });
   } catch (error) {
-    logger.error('Enrolment webhook error', { error });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorName = error instanceof Error ? error.name : 'unknown';
+    logger.error('Enrolment webhook error', { errorMessage, errorName });
     return handleError(error);
   }
 }
