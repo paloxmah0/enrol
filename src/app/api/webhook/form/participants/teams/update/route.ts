@@ -6,10 +6,28 @@ import { handleError, isValidSignature } from '@/lib/utils';
 // Ensure Node.js runtime since we rely on 'crypto'
 export const runtime = 'nodejs';
 
+interface TallyField {
+  label?: string;
+  value?: string;
+  key?: string;
+  type?: string;
+  options?: unknown;
+}
+
+interface TeamRecord {
+  data?: {
+    submissionId?: string;
+    responseId?: string;
+    fields?: TallyField[];
+  };
+  createdAt?: string;
+  eventId?: string;
+}
+
 /**
  * Find a field in the fields array by its label (exact or partial match)
  */
-function findFieldByLabel(fields: any[], label: string): any | null {
+function findFieldByLabel(fields: TallyField[], label: string): TallyField | null {
   if (!fields || !Array.isArray(fields)) return null;
   return fields.find(field => field?.label?.includes(label)) || null;
 }
@@ -35,7 +53,7 @@ function normalizePhone(phone: string): string {
  * Extract all team member email-phone pairs from a record
  * Looks for patterns "N: Email" and "N: Phone number" where N is 1-9
  */
-function extractTeamMemberPairs(record: any): Array<{email: string, phone: string}> {
+function extractTeamMemberPairs(record: TeamRecord): Array<{email: string, phone: string}> {
   const pairs: Array<{email: string, phone: string}> = [];
   
   if (!record?.data?.fields || !Array.isArray(record.data.fields)) {
@@ -118,7 +136,7 @@ export async function POST(request: NextRequest) {
     const rawMessages = await redis.lrange('enrolment-participants-teams', 0, -1);
     
     // Parse and find the previous record by submissionId
-    let previousRecord: any = null;
+    let previousRecord: TeamRecord | null = null;
     
     for (const raw of rawMessages) {
       try {
@@ -172,7 +190,7 @@ export async function POST(request: NextRequest) {
 
       // Find matching field in previous record by label (exact match)
       const existingFieldIndex = mergedRecord.data.fields.findIndex(
-        (f: any) => f.label === updateField.label
+        (f: TallyField) => f.label === updateField.label
       );
 
       if (existingFieldIndex >= 0) {

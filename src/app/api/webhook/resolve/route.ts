@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
 
     try {
       const backlogResult = await runBacklogResolveTick();
-      return NextResponse.json({ status: 'ok', backlog: true, ...backlogResult }, { status: 200 });
+      return NextResponse.json({ backlog: true, ...backlogResult }, { status: 200 });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error occurred';
       logger.error('Enrolment backlog resolve failed', { error: message });

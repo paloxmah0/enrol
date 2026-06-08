@@ -53,7 +53,7 @@ export async function GET() {
     const rawMessages = await redis.lrange("enrolment-submissions", 0, -1);
 
     const messages = rawMessages
-      .map((raw: any) => {
+      .map((raw: unknown) => {
         // If it's a string, parse it
         if (typeof raw === "string") return JSON.parse(raw);
         // If it's already an object (e.g., stored incorrectly), just return it

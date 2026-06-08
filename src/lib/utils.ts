@@ -25,7 +25,7 @@ export function isValidSignature(payload: string, receivedSignature: string): bo
       Buffer.from(calculatedSignature),
       Buffer.from(receivedSignature)
     );
-  } catch (err) {
+  } catch {
     return false;
   }
 }

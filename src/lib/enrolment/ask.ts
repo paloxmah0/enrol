@@ -1,7 +1,8 @@
 import type { TelegramWebhookPayload } from '@/lib/telegram';
 
 export async function handleAskMessage(
-  _payload: TelegramWebhookPayload
+  payload: TelegramWebhookPayload
 ): Promise<string> {
+  void payload;
   return 'enrolment/ask';
 }
