@@ -1,5 +1,9 @@
 import { logger } from '@/lib/logger';
-import type { RagRequest, RagResponse } from '@/lib/ask/types';
+import type {
+  RagAcceptedResponse,
+  RagQuestionMetadata,
+  RagRequest,
+} from '@/lib/ask/types';
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -9,42 +13,43 @@ function requireEnv(name: string): string {
   return value;
 }
 
-function validateRagResponse(body: unknown): RagResponse {
-  if (body == null || typeof body !== 'object') {
-    throw new Error('rag_invalid_response');
-  }
-
-  const payload = body as Partial<RagResponse>;
-  if (payload.answer !== null && typeof payload.answer !== 'string') {
-    throw new Error('rag_missing_answer');
-  }
-
-  return { answer: payload.answer ?? null };
+export function defaultCallbackUrl(): string {
+  const base = requireEnv('ENROL_APP_URL').replace(/\/$/, '');
+  return `${base}/api/ask/response`;
 }
 
-/** RAG answer from evaluate POST /api/rag. */
-export async function fetchRagAnswer(query: string): Promise<string> {
+/** Fire-and-forget dispatch to evaluate POST /api/rag (expects 202). */
+export async function dispatchRagRequest(
+  query: string,
+  metadata: RagQuestionMetadata,
+): Promise<void> {
   const evaluateAppUrl = requireEnv('EVALUATE_APP_URL').replace(/\/$/, '');
   const url = `${evaluateAppUrl}/api/rag`;
 
-  const body: RagRequest = { query };
+  const body: RagRequest = {
+    query,
+    preset: 'enrolment',
+    metadata,
+  };
+
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
 
-  if (!res.ok) {
-    throw new Error(`rag_request_failed: ${res.status}`);
+  if (res.status !== 202) {
+    throw new Error(`rag_dispatch_failed: ${res.status}`);
   }
 
-  const payload = validateRagResponse(await res.json());
-  const answer = payload.answer?.trim();
+  const payload = (await res.json()) as RagAcceptedResponse;
+  if (payload.status !== 'accepted') {
+    throw new Error('rag_dispatch_invalid_response');
+  }
 
-  logger.info('Fetched RAG answer', {
+  logger.info('Dispatched RAG request', {
     queryLength: query.length,
-    answerLength: answer?.length ?? 0,
+    telegramChat: metadata.telegramChat,
+    processingMessageId: metadata.processingMessageId,
   });
-
-  return answer || 'No response.';
 }

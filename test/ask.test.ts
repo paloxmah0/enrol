@@ -1,8 +1,11 @@
+import { dispatchRagRequest } from '@/lib/ask/client';
 import { extractAskQuery, handleAskMessage } from '@/lib/enrolment/ask';
-import { fetchRagAnswer } from '@/lib/ask/client';
 
 jest.mock('@/lib/ask/client', () => ({
-  fetchRagAnswer: jest.fn(),
+  dispatchRagRequest: jest.fn(),
+  defaultCallbackUrl: jest
+    .fn()
+    .mockReturnValue('https://enrol.example.com/api/ask/response'),
 }));
 
 describe('extractAskQuery', () => {
@@ -20,26 +23,38 @@ describe('extractAskQuery', () => {
 });
 
 describe('handleAskMessage', () => {
-  const mockedFetchRagAnswer = fetchRagAnswer as jest.MockedFunction<
-    typeof fetchRagAnswer
+  const mockedDispatch = dispatchRagRequest as jest.MockedFunction<
+    typeof dispatchRagRequest
   >;
 
   beforeEach(() => {
-    mockedFetchRagAnswer.mockReset();
+    mockedDispatch.mockReset();
+    mockedDispatch.mockResolvedValue(undefined);
   });
 
-  it('returns the RAG answer for /ask messages', async () => {
-    mockedFetchRagAnswer.mockResolvedValue('Use a voice note to enrol a role.');
-
-    const reply = await handleAskMessage({
-      message: {
-        chat: { id: 1 },
-        text: '/ask How do I enrol?',
+  it('dispatches RAG and returns null on success', async () => {
+    const reply = await handleAskMessage(
+      {
+        message: {
+          chat: { id: 1 },
+          text: '/ask How do I enrol?',
+        },
       },
-    });
+      {
+        sendProcessingIndicator: async () => 99,
+      }
+    );
 
-    expect(reply).toBe('Use a voice note to enrol a role.');
-    expect(mockedFetchRagAnswer).toHaveBeenCalledWith('How do I enrol?');
+    expect(reply).toBeNull();
+    expect(mockedDispatch).toHaveBeenCalledWith(
+      'How do I enrol?',
+      expect.objectContaining({
+        telegramChat: 1,
+        processingMessageId: 99,
+        callbackUrl: 'https://enrol.example.com/api/ask/response',
+        topic: '_botEnrolment',
+      })
+    );
   });
 
   it('returns usage guidance when no question is provided', async () => {
@@ -51,37 +66,11 @@ describe('handleAskMessage', () => {
     });
 
     expect(reply).toContain('Send a question after /ask');
-    expect(mockedFetchRagAnswer).not.toHaveBeenCalled();
+    expect(mockedDispatch).not.toHaveBeenCalled();
   });
 
-  it('returns a friendly error when RAG fetch fails', async () => {
-    mockedFetchRagAnswer.mockRejectedValue(new Error('rag_request_failed: 500'));
-
-    const reply = await handleAskMessage({
-      message: {
-        chat: { id: 1 },
-        text: '/ask What is a role?',
-      },
-    });
-
-    expect(reply).toContain('could not answer');
-  });
-
-  it('shows and removes a processing indicator while fetching', async () => {
-    const callOrder: string[] = [];
-
-    mockedFetchRagAnswer.mockImplementation(async () => {
-      callOrder.push('fetch');
-      return 'Answer ready.';
-    });
-
-    const sendProcessingIndicator = jest.fn().mockImplementation(async () => {
-      callOrder.push('send');
-      return 42;
-    });
-    const deleteProcessingIndicator = jest.fn().mockImplementation(async () => {
-      callOrder.push('delete');
-    });
+  it('returns a friendly error when dispatch fails', async () => {
+    mockedDispatch.mockRejectedValue(new Error('rag_dispatch_failed: 500'));
 
     const reply = await handleAskMessage(
       {
@@ -90,29 +79,11 @@ describe('handleAskMessage', () => {
           text: '/ask What is a role?',
         },
       },
-      { sendProcessingIndicator, deleteProcessingIndicator }
-    );
-
-    expect(reply).toBe('Answer ready.');
-    expect(callOrder).toEqual(['send', 'fetch', 'delete']);
-    expect(deleteProcessingIndicator).toHaveBeenCalledWith(42);
-  });
-
-  it('does not show a processing indicator for usage replies', async () => {
-    const sendProcessingIndicator = jest.fn();
-    const deleteProcessingIndicator = jest.fn();
-
-    await handleAskMessage(
       {
-        message: {
-          chat: { id: 1 },
-          text: '/ask',
-        },
-      },
-      { sendProcessingIndicator, deleteProcessingIndicator }
+        sendProcessingIndicator: async () => 99,
+      }
     );
 
-    expect(sendProcessingIndicator).not.toHaveBeenCalled();
-    expect(deleteProcessingIndicator).not.toHaveBeenCalled();
+    expect(reply).toContain('could not answer');
   });
 });

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { routeEnrolmentMessage } from '@/lib/enrolment/routeMessage';
 import { logger } from '@/lib/logger';
 import {
-  deleteTelegramMessage,
   messageThreadIdFromWebhookPayload,
   sendTelegramMessage,
   topicFromWebhookPayload,
@@ -41,9 +40,6 @@ export async function POST(request: NextRequest) {
             threadOptions
           );
           return processingMessage.message_id;
-        },
-        deleteProcessingIndicator: async (processingMessageId) => {
-          await deleteTelegramMessage(chatId, processingMessageId);
         },
       },
     });
