@@ -1,10 +1,14 @@
 import type { TelegramWebhookPayload } from '@/lib/telegram';
-import { handleAskMessage } from '@/lib/enrolment/ask';
+import { handleAskMessage, type AskMessageOptions } from '@/lib/enrolment/ask';
 import { handleRoleMessage } from '@/lib/enrolment/role';
 
 export type EnrolmentRoute = 'ask' | 'role' | 'unsupported';
 
 const DOCS_URL = 'https://docs.prisma.events/processes/enrolment';
+
+export type EnrolmentMessageOptions = {
+  ask?: AskMessageOptions;
+};
 
 export function classifyEnrolmentMessage(
   payload: TelegramWebhookPayload
@@ -26,13 +30,14 @@ export function classifyEnrolmentMessage(
 }
 
 export async function routeEnrolmentMessage(
-  payload: TelegramWebhookPayload
+  payload: TelegramWebhookPayload,
+  options?: EnrolmentMessageOptions
 ): Promise<{ route: EnrolmentRoute; reply: string }> {
   const route = classifyEnrolmentMessage(payload);
 
   if (route === 'ask') {
-    const moduleName = await handleAskMessage(payload);
-    return { route, reply: moduleName };
+    const reply = await handleAskMessage(payload, options?.ask);
+    return { route, reply };
   }
 
   if (route === 'role') {

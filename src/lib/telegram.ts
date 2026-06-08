@@ -91,3 +91,47 @@ export async function sendTelegramMessage(
     clearTimeout(timeout);
   }
 }
+
+export async function deleteTelegramMessage(
+  chatId: number,
+  messageId: number
+): Promise<void> {
+  if (!BOT_TOKEN) {
+    throw new Error('TELEGRAM_BOT_TOKEN is not configured');
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TELEGRAM_API_TIMEOUT);
+
+  try {
+    const response = await fetch(
+      `https://api.telegram.org/bot${BOT_TOKEN}/deleteMessage`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          message_id: messageId,
+        }),
+        signal: controller.signal,
+      }
+    );
+
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.description ?? 'Telegram API request failed');
+    }
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      logger.warn('Telegram deleteMessage timeout', { chatId, messageId });
+      return;
+    }
+    logger.warn('Failed to delete Telegram message', {
+      chatId,
+      messageId,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { routeEnrolmentMessage } from '@/lib/enrolment/routeMessage';
 import { logger } from '@/lib/logger';
 import {
+  deleteTelegramMessage,
   messageThreadIdFromWebhookPayload,
   sendTelegramMessage,
   topicFromWebhookPayload,
@@ -22,17 +23,32 @@ export async function POST(request: NextRequest) {
     const messageId = payload.message?.message_id;
     const topic = topicFromWebhookPayload(payload);
     const messageThreadId = messageThreadIdFromWebhookPayload(payload);
+    const threadOptions = messageThreadId
+      ? { message_thread_id: messageThreadId }
+      : {};
 
     if (!chatId) {
       logger.info('Webhook ignored: no chat id in payload.');
       return NextResponse.json({ status: 'ignored' });
     }
 
-    const { route, reply } = await routeEnrolmentMessage(payload);
-
-    await sendTelegramMessage(chatId, reply, {
-      ...(messageThreadId ? { message_thread_id: messageThreadId } : {}),
+    const { route, reply } = await routeEnrolmentMessage(payload, {
+      ask: {
+        sendProcessingIndicator: async () => {
+          const processingMessage = await sendTelegramMessage(
+            chatId,
+            '...',
+            threadOptions
+          );
+          return processingMessage.message_id;
+        },
+        deleteProcessingIndicator: async (processingMessageId) => {
+          await deleteTelegramMessage(chatId, processingMessageId);
+        },
+      },
     });
+
+    await sendTelegramMessage(chatId, reply, threadOptions);
 
     logger.info('Enrolment webhook reply sent.', {
       chatId,
