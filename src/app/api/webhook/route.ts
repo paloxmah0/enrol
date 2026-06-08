@@ -48,9 +48,11 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    await sendTelegramMessage(chatId, reply, threadOptions);
+    if (reply) {
+      await sendTelegramMessage(chatId, reply, threadOptions);
+    }
 
-    logger.info('Enrolment webhook reply sent.', {
+    logger.info('Enrolment webhook handled.', {
       chatId,
       messageId,
       topic,

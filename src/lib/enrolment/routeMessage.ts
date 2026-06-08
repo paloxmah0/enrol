@@ -32,7 +32,7 @@ export function classifyEnrolmentMessage(
 export async function routeEnrolmentMessage(
   payload: TelegramWebhookPayload,
   options?: EnrolmentMessageOptions
-): Promise<{ route: EnrolmentRoute; reply: string }> {
+): Promise<{ route: EnrolmentRoute; reply: string | null }> {
   const route = classifyEnrolmentMessage(payload);
 
   if (route === 'ask') {
@@ -41,8 +41,8 @@ export async function routeEnrolmentMessage(
   }
 
   if (route === 'role') {
-    const moduleName = await handleRoleMessage(payload);
-    return { route, reply: moduleName };
+    const reply = await handleRoleMessage(payload);
+    return { route, reply };
   }
 
   return {

@@ -1,7 +1,7 @@
 import { handleRoleMessage } from '@/lib/enrolment/role';
 
 describe('handleRoleMessage', () => {
-  it('returns a processing acknowledgment', async () => {
+  it('does not return a reply', async () => {
     const reply = await handleRoleMessage({
       message: {
         chat: { id: 1 },
@@ -9,6 +9,6 @@ describe('handleRoleMessage', () => {
       },
     });
 
-    expect(reply).toContain('being processed');
+    expect(reply).toBeNull();
   });
 });
