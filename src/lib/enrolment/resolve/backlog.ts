@@ -6,7 +6,6 @@ import {
   markEntryResolveAttempted,
   pickEntriesPendingResolve,
 } from './neo4j';
-import { removeFromOrganisingQueue } from './queue';
 import type { BacklogResolveResult } from './types';
 
 export async function runBacklogResolveTick(): Promise<BacklogResolveResult> {
@@ -41,7 +40,6 @@ export async function runBacklogResolveTick(): Promise<BacklogResolveResult> {
   logger.info('Backlog resolve processing entry', { entryId, outstanding });
 
   const result = await runEntryResolve(entryId);
-  await removeFromOrganisingQueue(entryId);
 
   const [remaining, updatedCounts] = await Promise.all([
     countEntriesPendingResolve(),
@@ -50,7 +48,10 @@ export async function runBacklogResolveTick(): Promise<BacklogResolveResult> {
 
   logger.info('Backlog resolve tick complete', {
     entryId,
-    resolveStatus: result.resolveStatus,
+    outcome:
+      'status' in result && result.status === 'skipped'
+        ? { status: 'skipped', reason: result.reason }
+        : { resolveStatus: result.resolveStatus },
     remaining,
   });
 

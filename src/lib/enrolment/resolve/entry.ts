@@ -1,21 +1,42 @@
 import { logger } from '@/lib/logger';
+import { evaluateResolveEligibility } from './eligibility';
 import {
-  loadResolveContext,
+  loadEntryResolveRecord,
   markEntryResolveFailed,
   markEntryResolveSuccessful,
 } from './neo4j';
+import { handlerForTopic } from './registry';
 import { resolveRoleEntry } from './schema/resolveRole';
-import type { EntryResolveResult } from './types';
+import type { EntryResolveResult, ResolveContext } from './types';
 
 export async function runEntryResolve(entryId: string): Promise<EntryResolveResult> {
-  const ctx = await loadResolveContext(entryId);
+  const record = await loadEntryResolveRecord(entryId);
 
-  if (!ctx) {
-    const reason = 'resolve_context_unavailable';
-    await markEntryResolveFailed(entryId, reason);
-    logger.error('Resolve failed: could not load context', { entryId, reason });
-    return { entryId, resolveStatus: 'failed' };
+  if (!record) {
+    logger.info('Resolve skipped: entry not found', { entryId });
+    return { entryId, status: 'skipped', reason: 'entry_not_found' };
   }
+
+  const handler = handlerForTopic(record.topic ?? undefined);
+  if (!handler) {
+    logger.info('Resolve skipped: unsupported topic', { entryId, topic: record.topic });
+    return { entryId, status: 'skipped', reason: 'unsupported_topic' };
+  }
+
+  const eligibility = evaluateResolveEligibility(record);
+  if (eligibility.status === 'skipped') {
+    logger.info('Resolve skipped', { entryId, reason: eligibility.reason });
+    return { entryId, status: 'skipped', reason: eligibility.reason };
+  }
+
+  const ctx: ResolveContext = {
+    entryId: record.entryId,
+    topic: record.topic ?? '',
+    handler,
+    participantHandle: record.participantHandle,
+    textContent: record.textContent,
+    transcription: record.transcription,
+  };
 
   logger.info('Resolve entry started', { entryId, handler: ctx.handler, topic: ctx.topic });
 

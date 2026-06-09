@@ -1,7 +1,6 @@
 import { POST } from '@/app/api/webhook/resolve/route';
 import { runBacklogResolveTick } from '@/lib/enrolment/resolve/backlog';
 import { runEntryResolve } from '@/lib/enrolment/resolve/entry';
-import { removeFromOrganisingQueue } from '@/lib/enrolment/resolve/queue';
 import { NextRequest } from 'next/server';
 
 jest.mock('@/lib/enrolment/resolve/backlog', () => ({
@@ -12,15 +11,9 @@ jest.mock('@/lib/enrolment/resolve/entry', () => ({
   runEntryResolve: jest.fn(),
 }));
 
-jest.mock('@/lib/enrolment/resolve/queue', () => ({
-  removeFromOrganisingQueue: jest.fn(),
-}));
-
 const mockedRunBacklogResolveTick =
   runBacklogResolveTick as jest.MockedFunction<typeof runBacklogResolveTick>;
 const mockedRunEntryResolve = runEntryResolve as jest.MockedFunction<typeof runEntryResolve>;
-const mockedRemoveFromOrganisingQueue =
-  removeFromOrganisingQueue as jest.MockedFunction<typeof removeFromOrganisingQueue>;
 
 const emptyCounts = { unset: 0, pending: 0, attempted: 0, successful: 0, failed: 0 };
 
@@ -52,8 +45,6 @@ describe('API /api/webhook/resolve', () => {
     process.env.PRIVATE_API_TOKEN = 'test-token';
     mockedRunBacklogResolveTick.mockReset();
     mockedRunEntryResolve.mockReset();
-    mockedRemoveFromOrganisingQueue.mockReset();
-    mockedRemoveFromOrganisingQueue.mockResolvedValue(true);
   });
 
   afterAll(() => {
@@ -75,7 +66,7 @@ describe('API /api/webhook/resolve', () => {
     expect(res.status).toBe(401);
   });
 
-  it('runs entry resolve and cleans up organising queue', async () => {
+  it('runs entry resolve for a valid entryId', async () => {
     mockedRunEntryResolve.mockResolvedValue({
       entryId: 'e1',
       handler: 'enrolment',
@@ -85,10 +76,29 @@ describe('API /api/webhook/resolve', () => {
     const res = await POST(buildRequest('e1'));
     expect(res.status).toBe(200);
     expect(mockedRunEntryResolve).toHaveBeenCalledWith('e1');
-    expect(mockedRemoveFromOrganisingQueue).toHaveBeenCalledWith('e1');
 
     const json = await res.json();
+    expect(json.status).toBe('ok');
     expect(json.result.resolveStatus).toBe('successful');
+  });
+
+  it('returns skipped status for non-role entries', async () => {
+    mockedRunEntryResolve.mockResolvedValue({
+      entryId: 'e1',
+      status: 'skipped',
+      reason: 'not_role_enrolment',
+    });
+
+    const res = await POST(buildRequest('e1'));
+    expect(res.status).toBe(200);
+
+    const json = await res.json();
+    expect(json.status).toBe('skipped');
+    expect(json.result).toEqual({
+      entryId: 'e1',
+      status: 'skipped',
+      reason: 'not_role_enrolment',
+    });
   });
 
   it('processes one backlog entry when backlog=true', async () => {

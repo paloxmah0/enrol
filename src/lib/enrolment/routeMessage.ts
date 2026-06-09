@@ -1,5 +1,5 @@
 import type { TelegramWebhookPayload } from '@/lib/telegram';
-import { handleAskMessage, type AskMessageOptions } from '@/lib/enrolment/ask';
+import { handleAskMessage, isAskText, type AskMessageOptions } from '@/lib/enrolment/ask';
 import { handleRoleMessage } from '@/lib/enrolment/role';
 
 export type EnrolmentRoute = 'ask' | 'role' | 'unsupported';
@@ -18,7 +18,7 @@ export function classifyEnrolmentMessage(
     return 'unsupported';
   }
 
-  if (message.text?.startsWith('/ask')) {
+  if (isAskText(message.text)) {
     return 'ask';
   }
 

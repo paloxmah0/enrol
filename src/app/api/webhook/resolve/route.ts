@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runBacklogResolveTick } from '@/lib/enrolment/resolve/backlog';
 import { runEntryResolve } from '@/lib/enrolment/resolve/entry';
-import { removeFromOrganisingQueue } from '@/lib/enrolment/resolve/queue';
 import { logger } from '@/lib/logger';
 import { verifyInfraRequest } from '@/lib/private-auth';
 
@@ -41,22 +40,11 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = await runEntryResolve(entryId);
-    await removeFromOrganisingQueue(entryId);
-
-    return NextResponse.json({ status: 'ok', result }, { status: 200 });
+    const status = 'status' in result && result.status === 'skipped' ? 'skipped' : 'ok';
+    return NextResponse.json({ status, result }, { status: 200 });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error occurred';
     logger.error('Enrolment resolve worker failed', { entryId, error: message });
-
-    try {
-      await removeFromOrganisingQueue(entryId);
-    } catch (cleanupError) {
-      logger.error('Organising queue cleanup failed after resolve error', {
-        entryId,
-        error: cleanupError instanceof Error ? cleanupError.message : cleanupError,
-      });
-    }
-
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

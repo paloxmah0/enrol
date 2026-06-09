@@ -7,6 +7,14 @@ import type { TelegramWebhookPayload } from '@/lib/telegram';
 const ASK_USAGE =
   'Send a question after /ask, for example: /ask How do I enrol a facilitator role?';
 
+export function isAskText(text: string | null | undefined): boolean {
+  if (!text?.trim()) {
+    return false;
+  }
+
+  return /^\/ask(?:@\S+)?/i.test(text.trim());
+}
+
 export type AskMessageOptions = {
   sendProcessingIndicator?: () => Promise<number>;
 };

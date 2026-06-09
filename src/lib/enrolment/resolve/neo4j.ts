@@ -1,6 +1,8 @@
 import { initDriver } from '@/lib/db/neo4j';
 import neo4j from 'neo4j-driver';
-import { ENROLMENT_TOPIC, entryMeetsVoiceGate, handlerForTopic } from './registry';
+import type { EntryResolveRecord } from './eligibility';
+import { evaluateResolveEligibility } from './eligibility';
+import { ENROLMENT_TOPIC, handlerForTopic } from './registry';
 import type { EntryTelegramRef, ResolveContext, ResolveStatus, ResolveStatusCounts } from './types';
 
 // Must stay aligned with entryMeetsVoiceGate() in registry.ts.
@@ -11,9 +13,8 @@ export const ELIGIBLE_RESOLVE_STATUS_WHERE =
 const PENDING_PICK_MATCH = `
   MATCH (e:Entry)-[:FROM_CHAT]->(c:TelegramChat)
   WHERE ${ELIGIBLE_RESOLVE_STATUS_WHERE} AND c.topic = $topic
-  OPTIONAL MATCH (e)-[:HAS_VOICE]->(v:Voice)
-  WITH e, v
-  WHERE v IS NULL OR v.transcription IS NOT NULL
+  MATCH (e)-[:HAS_VOICE]->(v:Voice)
+  WHERE v.transcription IS NOT NULL
 `;
 
 export async function pickEntriesPendingResolve(limit: number): Promise<string[]> {
@@ -155,9 +156,9 @@ export async function markEntryResolveFailed(
   }
 }
 
-export async function loadResolveContext(
+export async function loadEntryResolveRecord(
   entryId: string
-): Promise<ResolveContext | null> {
+): Promise<EntryResolveRecord | null> {
   const driver = await initDriver();
   const session = driver.session({ database: 'neo4j' });
 
@@ -173,36 +174,56 @@ export async function loadResolveContext(
              p.handle AS participantHandle,
              t.text AS textContent,
              v.transcription AS transcription,
-             v.processingStatus AS voiceStatus
+             v.processingStatus AS voiceStatus,
+             v IS NOT NULL AS hasVoice
       `,
       { entryId }
     );
 
-    if (result.records.length === 0) return null;
-
-    const record = result.records[0];
-    const topic = record.get('topic') as string | null;
-    const handler = handlerForTopic(topic ?? undefined);
-    if (!handler) return null;
-
-    const voiceStatus = record.get('voiceStatus') as string | null;
-    const transcription = record.get('transcription') as string | undefined;
-
-    if (!entryMeetsVoiceGate(voiceStatus, transcription)) {
+    if (result.records.length === 0) {
       return null;
     }
 
+    const record = result.records[0];
     return {
-      entryId,
-      topic: topic ?? '',
-      handler,
+      entryId: record.get('entryId') as string,
+      topic: record.get('topic') as string | null,
       participantHandle: record.get('participantHandle') as string,
       textContent: record.get('textContent') as string | undefined,
-      transcription,
+      transcription: record.get('transcription') as string | undefined,
+      voiceStatus: record.get('voiceStatus') as string | null,
+      hasVoice: Boolean(record.get('hasVoice')),
     };
   } finally {
     await session.close();
   }
+}
+
+export async function loadResolveContext(
+  entryId: string
+): Promise<ResolveContext | null> {
+  const record = await loadEntryResolveRecord(entryId);
+  if (!record) {
+    return null;
+  }
+
+  const handler = handlerForTopic(record.topic ?? undefined);
+  if (!handler) {
+    return null;
+  }
+
+  if (evaluateResolveEligibility(record).status !== 'ready') {
+    return null;
+  }
+
+  return {
+    entryId: record.entryId,
+    topic: record.topic ?? '',
+    handler,
+    participantHandle: record.participantHandle,
+    textContent: record.textContent,
+    transcription: record.transcription,
+  };
 }
 
 export async function loadEntryTelegramRef(

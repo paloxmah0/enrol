@@ -1,5 +1,5 @@
 import { dispatchRagRequest } from '@/lib/ask/client';
-import { extractAskQuery, handleAskMessage } from '@/lib/enrolment/ask';
+import { extractAskQuery, handleAskMessage, isAskText } from '@/lib/enrolment/ask';
 
 jest.mock('@/lib/ask/client', () => ({
   dispatchRagRequest: jest.fn(),
@@ -14,6 +14,12 @@ describe('extractAskQuery', () => {
     expect(extractAskQuery('/ask@EnrolBot What is enrolment?')).toBe(
       'What is enrolment?'
     );
+  });
+
+  it('detects ask commands', () => {
+    expect(isAskText('/ask What is enrolment?')).toBe(true);
+    expect(isAskText('/ask@EnrolBot What is enrolment?')).toBe(true);
+    expect(isAskText('hello')).toBe(false);
   });
 
   it('returns null when only the command is present', () => {

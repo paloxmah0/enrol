@@ -13,11 +13,23 @@ export interface ResolveContext {
   textContent?: string;
 }
 
-export interface EntryResolveResult {
-  entryId: string;
-  handler?: ResolveHandlerName;
-  resolveStatus: ResolveStatus;
-}
+export type ResolveSkipReason =
+  | 'not_role_enrolment'
+  | 'voice_not_ready'
+  | 'entry_not_found'
+  | 'unsupported_topic';
+
+export type EntryResolveResult =
+  | {
+      entryId: string;
+      handler: ResolveHandlerName;
+      resolveStatus: ResolveStatus;
+    }
+  | {
+      entryId: string;
+      status: 'skipped';
+      reason: ResolveSkipReason;
+    };
 
 export type EntrySourceKind = 'voice' | 'text';
 
