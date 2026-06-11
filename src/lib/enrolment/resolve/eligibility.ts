@@ -16,7 +16,7 @@ export type ResolveEligibility =
   | { status: 'ready' }
   | { status: 'skipped'; reason: ResolveSkipReason };
 
-/** Whether a stored entry should run role enrolment resolve (mirrors webhook routing). */
+/** Whether a stored entry is eligible for role enrolment resolve. */
 export function evaluateResolveEligibility(record: EntryResolveRecord): ResolveEligibility {
   if (isAskText(record.textContent)) {
     return { status: 'skipped', reason: 'not_role_enrolment' };
