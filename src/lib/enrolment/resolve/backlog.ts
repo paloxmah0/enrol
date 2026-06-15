@@ -49,9 +49,9 @@ export async function runBacklogResolveTick(): Promise<BacklogResolveResult> {
   logger.info('Backlog resolve tick complete', {
     entryId,
     outcome:
-      'status' in result && result.status === 'skipped'
-        ? { status: 'skipped', reason: result.reason }
-        : { resolveStatus: result.resolveStatus },
+      'resolveStatus' in result
+        ? { resolveStatus: result.resolveStatus }
+        : { status: 'skipped', reason: result.reason },
     remaining,
   });
 

@@ -12,7 +12,8 @@ export interface DidLookupResult {
  * V1 stub: always returns found with OWNER.
  * V2: deriveStakeAddressFromBaseAddress → deriveDID → GET DID_INDEXER_ENDPOINT/did/{did}
  */
-export async function lookupDidForWallet(_address: string): Promise<DidLookupResult> {
+export async function lookupDidForWallet(address: string): Promise<DidLookupResult> {
+  void address;
   // TODO: use @prisma-events/dids-sdk derive + DID indexer lookup
   return { found: true, hubRole: 'OWNER' };
 }
